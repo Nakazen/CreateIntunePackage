@@ -1,8 +1,8 @@
 <#
 .SYNOPSIS
-This PowerShell script is used to set up utilities and tools for creating Intune packages. It checks for the existence of certain utilities and downloads them if they are not found. The script is designed to be used in a test environment.
+This PowerShell script is used to set up utilities and tools for creating Intune packages. It checks for the existence of certain utilities and downloads them if they are not found.
 
-.PARAMETERS
+.PARAMETER
 The script uses a hashtable `$Params` to store paths to various utilities and directories. These include:
 
 - `IntuneWinAppUtil`: Path to the Intune Windows App Utility.
@@ -28,16 +28,17 @@ The script defines several functions:
 
 - `ConvertIconToPng`: This function converts an icon file to a PNG image using the ImageMagick convert utility. It takes two parameters: the path to the icon file and the output path for the PNG image.
 
+.LINK
+ExtractIcon.exe: https://github.com/bertjohnson/ExtractIcon
+
+ImageMagick - x64 16 bit Portable version - Only need convert.exe: https://imagemagick.org/script/download.php#windows
+
 .USAGE
 Place and run the script in an Administrator PowerShell console from the folder you want to create the intune package from. If a PowerShell script is selected for packaging, the script will also create a text file with the install and uninstall commands (if an uninstall script is found that starts with ).
 If any of the utilities are missing, the script will prompt you to download and set up the utilities. If the automatic setup fails, you will be prompted to manually download and place the utility at the specified path.
 #>
 
-# ExtractIcon.exe:
-# https://github.com/bertjohnson/ExtractIcon
-#
-# ImageMagick - Portable version - Only need convert.exe
-# https://imagemagick.org/script/download.php#windows
+
 
 # Settable parameters
 
@@ -158,21 +159,21 @@ function ExtractIconFromExecutableOrMSI {
             $processedMsi = $true
             $msiexecArgs = "/a `"$($selectedFile.FullName)`" /qb TARGETDIR=`"$($Params.TempMsiExtract)`""
             try {
-            Start-Process -FilePath "msiexec.exe" -ArgumentList $msiexecArgs -Wait
+                Start-Process -FilePath "msiexec.exe" -ArgumentList $msiexecArgs -Wait
             } catch {
-            Write-Host "An error occurred while extracting MSI contents: $($_.Exception.Message)"
-            exit
+                Write-Host "An error occurred while extracting MSI contents: $($_.Exception.Message)"
+                exit
             }
             
             $exeFilesInMsi = Get-ChildItem -Path $Params.TempMsiExtract -Recurse | Where-Object { $_.Extension -eq ".exe" }
             $exeFilesDirectory = Join-Path $Params.TempMsiExtract "ExeFiles"
             if (-not (Test-Path $exeFilesDirectory)) { 
-            try {
-                New-Item -Path $exeFilesDirectory -ItemType Directory -Force | Out-Null 
-            } catch {
-                Write-Host "An error occurred while creating the directory for extracted EXE files: $($_.Exception.Message)"
-                exit
-            }
+                try {
+                    New-Item -Path $exeFilesDirectory -ItemType Directory -Force | Out-Null 
+                } catch {
+                    Write-Host "An error occurred while creating the directory for extracted EXE files: $($_.Exception.Message)"
+                    exit
+                }
             }
 
             # Move files with handling for name collisions
@@ -193,10 +194,10 @@ function ExtractIconFromExecutableOrMSI {
             
             # Start Explorer
             try {
-            Start-Process explorer.exe -ArgumentList $exeFilesDirectory
+                Start-Process explorer.exe -ArgumentList $exeFilesDirectory
             } catch {
-            Write-Host "An error occurred while starting Explorer: $($_.Exception.Message)"
-            exit
+                Write-Host "An error occurred while starting Explorer: $($_.Exception.Message)"
+                exit
             }
             $selectedFile = DisplayFilesAndPromptChoice $exeFilesDirectory ".exe$"
         }
@@ -239,7 +240,6 @@ function ExtractIconFromExecutableOrMSI {
             Write-Host "An error occurred while converting the PNG file to ICO: $($_.Exception.Message)"
             exit
         }
-    
     
         try {
             # Remove the dedicated directory containing the .exe files
