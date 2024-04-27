@@ -284,6 +284,87 @@ function ExtractIconFromExecutableOrMSI {
         Write-Output "An error occurred while extracting the icon: $($_.Exception.Message)"
     }
 }
+
+function GenerateInstallUninstallCommands($selectedFile) {
+    $baseName = [System.IO.Path]::GetFileNameWithoutExtension($selectedFile.Name)
+    $logFileName = "$baseName.txt"
+    $installCommand = "Powershell.exe -NoProfile -ExecutionPolicy ByPass -Command ""& { md C:\IT\logs -ErrorAction SilentlyContinue; .\$($selectedFile.Name) -Verbose *> %programdata%\Microsoft\IntuneManagementExtension\Logs\$logFileName }"""
+
+    # Search for uninstall scripts
+    $uninstallScript = Get-ChildItem -Path $Params.ScriptDir -Filter "*.ps1" | Where-Object {
+        $_.Name -like "uninstall*" -or $_.Name -like "Undeploy*"
+    } | Select-Object -First 1
+
+    if ($null -eq $uninstallScript) {
+        Write-Output "No specific uninstall script found, using install script for uninstall."
+        $uninstallCommand = $installCommand
+    } else {
+        $uninstallLogFileName = "$($uninstallScript.BaseName).txt"
+        $uninstallCommand = "Powershell.exe -NoProfile -ExecutionPolicy ByPass -Command ""& { md C:\IT\logs -ErrorAction SilentlyContinue; .\$($uninstallScript.Name) -Verbose *> %programdata%\Microsoft\IntuneManagementExtension\Logs\$uninstallLogFileName }"""
+    }
+
+    $commandText = 
+@"
+Install command:
+
+$installCommand
+
+Uninstall command:
+
+$uninstallCommand
+"@
+    $commandsFilePath = Join-Path $Params.ScriptDir "Install_Uninstall_Commands.txt"
+    $commandText | Out-File $commandsFilePath -Force
+    Write-Output "Commands file created at: $commandsFilePath"
+    write-output ""
+}
+
+function GenerateIntuneDetectionScript($selectedFile){
+    $fileContent = Get-Content -Path $selectedFile.FullName
+
+    # Initialize arrays to store the actions
+    $registryActions = @()
+    $fileActions = @()
+
+    # Search for registry keys / file actions and accumulate results
+    foreach ($line in $fileContent) {
+        # Search for registry manipulation actions and accumulate results
+        if ($line -match "Set-ItemProperty|New-ItemProperty|Remove-ItemProperty|Remove-Item -Path") {
+            $registryActions += $line
+        }
+
+        # Search for file manipulation actions and accumulate results
+        if ($line -match "Copy-Item|New-Item|Remove-Item|Rename-Item|Set-Content") {
+            $fileActions += $line
+            write-output $line
+        }
+    }
+
+    # #create detection script
+    # $registryPath = "HKLM:\SOFTWARE\MyApp"
+    # $valueName = "Version"
+    # $expectedValue = "1.0"
+    
+    # # Check if the registry path exists
+    # if (Test-Path $registryPath) {
+    #     # Get the actual value from the registry
+    #     $actualValue = (Get-ItemProperty -Path $registryPath).$valueName
+    
+    #     # Compare the actual value with the expected value
+    #     if ($actualValue -eq $expectedValue) {
+    #         Write-Host "Detection succeeded: The value is correct."
+    #         exit 0  # Success code for Intune
+    #     } else {
+    #         Write-Host "Detection failed: Value does not match."
+    #         exit 1  # Failure code
+    #     }
+    # } else {
+    #     Write-Host "Detection failed: Registry path does not exist."
+    #     exit 1  # Failure code
+    # }
+
+}
+
 function GenerateIntuneWinPackages {
     try {
         $selectedFile = DisplayFilesAndPromptChoice $Params.ScriptDir ".(ps1|exe|bat|cmd|msi)$"
@@ -291,6 +372,11 @@ function GenerateIntuneWinPackages {
         $tempOutput = "$env:TEMP\IntuneOutput"
         if (-not (Test-Path $tempOutput)) {
             New-Item -Path $tempOutput -ItemType Directory -Force | Out-Null
+        }
+
+        if ($selectedFile.Extension -eq ".ps1") {
+            GenerateInstallUninstallCommands $selectedFile
+            GenerateIntuneDetectionScript $selectedFile
         }
 
         try {
@@ -310,39 +396,7 @@ function GenerateIntuneWinPackages {
             exit
         }
 
-        if ($selectedFile.Extension -eq ".ps1") {
-            $baseName = [System.IO.Path]::GetFileNameWithoutExtension($selectedFile.Name)
-            $logFileName = "$baseName.txt"
-            $installCommand = "Powershell.exe -NoProfile -ExecutionPolicy ByPass -Command ""& { md C:\IT\logs -ErrorAction SilentlyContinue; .\$($selectedFile.Name) -Verbose *> %programdata%\Microsoft\IntuneManagementExtension\Logs\$logFileName }"""
 
-            # Search for uninstall scripts
-            $uninstallScript = Get-ChildItem -Path $Params.ScriptDir -Filter "*.ps1" | Where-Object {
-                $_.Name -like "uninstall*" -or $_.Name -like "Undeploy*"
-            } | Select-Object -First 1
-
-            if ($null -eq $uninstallScript) {
-                Write-Output "No specific uninstall script found, using install script for uninstall."
-                $uninstallCommand = $installCommand
-            } else {
-                $uninstallLogFileName = "$($uninstallScript.BaseName).txt"
-                $uninstallCommand = "Powershell.exe -NoProfile -ExecutionPolicy ByPass -Command ""& { md C:\IT\logs -ErrorAction SilentlyContinue; .\$($uninstallScript.Name) -Verbose *> %programdata%\Microsoft\IntuneManagementExtension\Logs\$uninstallLogFileName }"""
-            }
-
-            $commandText = 
-@"
-Install command:
-
-$installCommand
-
-Uninstall command:
-
-$uninstallCommand
-"@
-            $commandsFilePath = Join-Path $Params.ScriptDir "Install_Uninstall_Commands.txt"
-            $commandText | Out-File $commandsFilePath -Force
-            Write-Output "Commands file created at: $commandsFilePath"
-            write-output ""
-        }
         # Cleanup temporary folder
         try {
             Remove-Item -Path $tempOutput -Recurse -Force
@@ -353,6 +407,10 @@ $uninstallCommand
         Write-Output "An error occurred in the GenerateIntuneWinPackages function: $($_.Exception.Message)"
     }
 }
+
+
+
+
 
 # Script logic
 Write-Host "_  _ ____ ___  ____ ____ _  _    _  _ ____ ____ ___  ___  _    ____ ____ ____ " -ForegroundColor Green
