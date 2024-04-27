@@ -429,7 +429,7 @@ SetupTools -UtilityPath $Params.IntuneWinAppUtil -DownloadUrl "https://github.co
 SetupTools -UtilityPath $Params.ExtractIcon -DownloadUrl "https://github.com/Nakazen/CreateIntunePackage/raw/main/Tools/extracticon.exe" -TargetFolder (Split-Path $Params.ExtractIcon)
 
 # Icon extraction
-Write-Host "First time? Read the Synopsys and modify the Settable parameters section in the script." -ForegroundColor DarkGray
+Write-Host "First time? Read the Synopsis and modify the Settable parameters section in the script." -ForegroundColor DarkGray
 write-host " "
 if ((Read-Host "Extract icon from executable or MSI? (Y/N)") -eq 'Y') {
     ExtractIconFromExecutableOrMSI
