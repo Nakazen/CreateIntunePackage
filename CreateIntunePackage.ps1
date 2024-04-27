@@ -42,9 +42,9 @@ Run the script in a PowerShell console. If any of the utilities are missing, the
 
 # User settable variables
 $Params = @{
-    'IntuneWinAppUtil' = "C:\Intune\testenv\IntuneWinAppUtil.exe"
-    'ConvertExe'       = "C:\Intune\testenv\Tools\ImageMagick\convert.exe"
-    'ExtractIcon'      = "C:\Intune\testenv\Tools\Extracticon\extracticon.exe"
+    'IntuneWinAppUtil' = "C:\Intune\IntuneWinAppUtil.exe"
+    'ConvertExe'       = "C:\Intune\Tools\ImageMagick\convert.exe"
+    'ExtractIcon'      = "C:\Intune\Tools\Extracticon\extracticon.exe"
     'TempMsiExtract'   = "C:\Temp\msi_extraction\"
     'OutputFolder'     = "C:\Intune\Output"
     'IconOutput'       = "C:\Intune\Logos"
