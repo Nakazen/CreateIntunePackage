@@ -127,111 +127,151 @@ function SetupTools {
 }
 
 function DisplayFilesAndPromptChoice($path, $extensions) {
-    $files = Get-ChildItem -Path $path -File | Where-Object { $_.Extension -match $extensions }
+    try {
+        $files = Get-ChildItem -Path $path -File | Where-Object { $_.Extension -match $extensions }
 
-    # Check if files are found
-    if (-not $files) {
-        Write-Host "No matching files found in the directory."
-        exit
-    }
-
-    # Display files for user to choose using Write-Host
-    $index = 1
-    $files | ForEach-Object {
-        Write-Host "$index. $($_.Name)"
-        $index++
-    }
-
-    $choice = Read-Host "Enter the number of the file"
-    while ($choice -lt 1 -or $choice -gt $files.Count) {
-        Write-Host "Invalid choice. Please choose a valid file number."
-        $choice = Read-Host "Enter the number of the file"
-    }
-    
-    return $files[$choice - 1]
-}
-function ExtractIconFromExecutableOrMSI {
-    $selectedFile = DisplayFilesAndPromptChoice $Params.ScriptDir ".(exe|msi)$"
-    
-    # If MSI, extract contents and allow user to choose .exe
-    if ($selectedFile.Extension -eq ".msi") {
-        $processedMsi = $true
-        $msiexecArgs = "/a `"$($selectedFile.FullName)`" /qb TARGETDIR=`"$($Params.TempMsiExtract)`""
-        Start-Process -FilePath "msiexec.exe" -ArgumentList $msiexecArgs -Wait
-        
-        $exeFilesInMsi = Get-ChildItem -Path $Params.TempMsiExtract -Recurse | Where-Object { $_.Extension -eq ".exe" }
-        $exeFilesDirectory = Join-Path $Params.TempMsiExtract "ExeFiles"
-        if (-not (Test-Path $exeFilesDirectory)) { 
-            New-Item -Path $exeFilesDirectory -ItemType Directory -Force | Out-Null 
+        # Check if files are found
+        if (-not $files) {
+            Write-Host "No matching files found in the directory."
+            exit
         }
 
-        # Move files with handling for name collisions
-        $exeFilesInMsi | ForEach-Object {
+        # Display files for user to choose using Write-Host
+        $index = 1
+        $files | ForEach-Object {
+            Write-Host "$index. $($_.Name)"
+            $index++
+        }
+
+        $choice = Read-Host "Enter the number of the file"
+        while ($choice -lt 1 -or $choice -gt $files.Count) {
+            Write-Host "Invalid choice. Please choose a valid file number."
+            $choice = Read-Host "Enter the number of the file"
+        }
+        
+        return $files[$choice - 1]
+    } catch {
+        Write-Host "An error occurred while displaying files: $($_.Exception.Message)"
+        exit
+    }
+}
+function ExtractIconFromExecutableOrMSI {
+    try {
+        $selectedFile = DisplayFilesAndPromptChoice $Params.ScriptDir ".(exe|msi)$"
+        
+        # If MSI, extract contents and allow user to choose .exe
+        if ($selectedFile.Extension -eq ".msi") {
+            $processedMsi = $true
+            $msiexecArgs = "/a `"$($selectedFile.FullName)`" /qb TARGETDIR=`"$($Params.TempMsiExtract)`""
+            try {
+            Start-Process -FilePath "msiexec.exe" -ArgumentList $msiexecArgs -Wait
+            } catch {
+            Write-Host "An error occurred while extracting MSI contents: $($_.Exception.Message)"
+            exit
+            }
+            
+            $exeFilesInMsi = Get-ChildItem -Path $Params.TempMsiExtract -Recurse | Where-Object { $_.Extension -eq ".exe" }
+            $exeFilesDirectory = Join-Path $Params.TempMsiExtract "ExeFiles"
+            if (-not (Test-Path $exeFilesDirectory)) { 
+            try {
+                New-Item -Path $exeFilesDirectory -ItemType Directory -Force | Out-Null 
+            } catch {
+                Write-Host "An error occurred while creating the directory for extracted EXE files: $($_.Exception.Message)"
+                exit
+            }
+            }
+
+            # Move files with handling for name collisions
+            $exeFilesInMsi | ForEach-Object {
             $destinationPath = Join-Path $exeFilesDirectory $_.Name
             $uniqueId = 1
             while (Test-Path $destinationPath) {
                 $destinationPath = Join-Path $exeFilesDirectory ("$($_.BaseName)_$uniqueId$($_.Extension)")
                 $uniqueId++
             }
-            Move-Item -Path $_.FullName -Destination $destinationPath
+            try {
+                Move-Item -Path $_.FullName -Destination $destinationPath
+            } catch {
+                Write-Host "An error occurred while moving the extracted EXE file: $($_.Exception.Message)"
+                exit
+            }
+            }
+            
+            # Start Explorer
+            try {
+            Start-Process explorer.exe -ArgumentList $exeFilesDirectory
+            } catch {
+            Write-Host "An error occurred while starting Explorer: $($_.Exception.Message)"
+            exit
+            }
+            $selectedFile = DisplayFilesAndPromptChoice $exeFilesDirectory ".exe$"
         }
         
-        # Start Explorer
-        Start-Process explorer.exe -ArgumentList $exeFilesDirectory
-        $selectedFile = DisplayFilesAndPromptChoice $exeFilesDirectory ".exe$"
-    }
+        try {
+            # Extract Icon
+            $tempOutputPngPath = Join-Path $Params.ScriptDir "temp_icon.png"
+            Start-Process "$($Params.ExtractIcon)" -ArgumentList "`"$($selectedFile.FullName)`" `"$tempOutputPngPath`"" -Wait
+        } catch {
+            Write-Host "An error occurred while extracting the icon: $($_.Exception.Message)"
+            exit
+        }
     
-    # Extract Icon
-    $tempOutputPngPath = Join-Path $Params.ScriptDir "temp_icon.png"
-    Start-Process "$($Params.ExtractIcon)" -ArgumentList "`"$($selectedFile.FullName)`" `"$tempOutputPngPath`"" -Wait
-
-    # Rename and move operations for the .png and .ico files
-    $tempOutputPngPath = Join-Path $Params.ScriptDir "temp_icon.png"
-    $finalPngPath = Join-Path $Params.ScriptDir "$($Params.FolderName).png"
-
-    # Check if a file with the desired name already exists and remove it
-    if (Test-Path $finalPngPath) {
-        Remove-Item -Path $finalPngPath -Force
-    }
-
-    # Rename the PNG to match the folder name
-    Rename-Item -Path $tempOutputPngPath -NewName "$($Params.FolderName).png"
-
-    # Move the extracted icon to the specified IconOutputFolder
-    if (-not (Test-Path $Params.IconOutput)) {
-        New-Item -Path $Params.IconOutput -ItemType Directory -Force | Out-Null
-    }
-    Copy-Item -Path (Join-Path $Params.ScriptDir "$($Params.FolderName).png") -Destination $Params.IconOutput -Force
-
-    # Similar adjustments for the .ico file
-    $pngFilePath = Join-Path $Params.ScriptDir "$($Params.FolderName).png"
-    $icoOutputPath = Join-Path $Params.ScriptDir "$($Params.FolderName).ico"
-    $ConvertExeLocation = $Params.ConvertExe
-    Start-Process "$ConvertExeLocation" -ArgumentList "`"$pngFilePath`" -define icon:auto-resize=256,128,48,32,16 `"$icoOutputPath`"" -Wait
-
-
-    # Remove the dedicated directory containing the .exe files
-    if ($processedMsi -and (Test-Path $exeFilesDirectory)) {
-        Remove-Item -Path $exeFilesDirectory -Recurse -Force
-    }
-
-    # Remove the temporary .png file
-    if (Test-Path $pngFilePath) {
-        Remove-Item -Path $pngFilePath -Force
-    }
-
-    # Clean up the temp MSI extraction directory
-    $msiExtractionPath = $Params.TempMsiExtract
-    if (Test-Path $msiExtractionPath) {
-        Write-Output "Cleaning up MSI extraction directory..."
-        Remove-Item -Path $msiExtractionPath -Recurse -Force
-        Write-Output "MSI extraction directory cleaned up."
-    }
-
+        # Rename and move operations for the .png and .ico files
+        $tempOutputPngPath = Join-Path $Params.ScriptDir "temp_icon.png"
+        $finalPngPath = Join-Path $Params.ScriptDir "$($Params.FolderName).png"
+    
+        # Check if a file with the desired name already exists and remove it
+        if (Test-Path $finalPngPath) {
+            Remove-Item -Path $finalPngPath -Force
+        }
+    
+        # Rename the PNG to match the folder name
+        Rename-Item -Path $tempOutputPngPath -NewName "$($Params.FolderName).png"
+    
+        # Move the extracted icon to the specified IconOutputFolder
+        if (-not (Test-Path $Params.IconOutput)) {
+            New-Item -Path $Params.IconOutput -ItemType Directory -Force | Out-Null
+        }
+        Copy-Item -Path (Join-Path $Params.ScriptDir "$($Params.FolderName).png") -Destination $Params.IconOutput -Force
+    
+        # Similar adjustments for the .ico file
+        $pngFilePath = Join-Path $Params.ScriptDir "$($Params.FolderName).png"
+        $icoOutputPath = Join-Path $Params.ScriptDir "$($Params.FolderName).ico"
+        $ConvertExeLocation = $Params.ConvertExe
+        try {
+            Start-Process "$ConvertExeLocation" -ArgumentList "`"$pngFilePath`" -define icon:auto-resize=256,128,48,32,16 `"$icoOutputPath`"" -Wait
+            Write-Output "PNG file converted to ICO successfully."
+        } catch {
+            Write-Host "An error occurred while converting the PNG file to ICO: $($_.Exception.Message)"
+            exit
+        }
+    
+    
+        # Remove the dedicated directory containing the .exe files
+        if ($processedMsi -and (Test-Path $exeFilesDirectory)) {
+            Remove-Item -Path $exeFilesDirectory -Recurse -Force
+        }
+    
+        # Remove the temporary .png file
+        if (Test-Path $pngFilePath) {
+            Remove-Item -Path $pngFilePath -Force
+        }
+    
+        # Clean up the temp MSI extraction directory
+        $msiExtractionPath = $Params.TempMsiExtract
+        if (Test-Path $msiExtractionPath) {
+            Write-Output "Cleaning up MSI extraction directory..."
+            Remove-Item -Path $msiExtractionPath -Recurse -Force
+            Write-Output "MSI extraction directory cleaned up."
+        }
+    
         # Inform the user
         Write-Output "Icon extracted, renamed to $($Params.FolderName).png, and moved to $($Params.IconOutput)."
         Write-Output "PNG file converted to ICO and saved as $($Params.FolderName).ico."
         Write-Output "Temporary files have been cleaned up."
+    } catch {
+        Write-Output "An error occurred while extracting the icon: $($_.Exception.Message)"
+    }
 }
 function GenerateIntuneWinPackages {
     $selectedFile = DisplayFilesAndPromptChoice $Params.ScriptDir ".(ps1|exe|bat|cmd|msi)$"
