@@ -18,9 +18,9 @@ The script uses a hashtable `$Params` to store paths to various utilities and di
 .FUNCTIONS
 The script defines several functions:
 
-- `SetupUtilities`: This function checks if a utility exists at the specified path. If not, it prompts the user to download and set up the utility. The function takes three parameters: `utilityPath`, `downloadUrl`, `targetFolder`.
+- `DownloadTools`: This function checks if a utility exists at the specified path. If not, it prompts the user to download and set up the utility. The function takes three parameters: `utilityPath`, `downloadUrl`, `targetFolder`.
 
-- `SetupTools`: This function checks if a utility exists at the specified path. If not, it attempts to set up the utility using the `SetupUtilities` function. If the setup fails, it prompts the user to manually download and place the utility at the specified path. The function takes three parameters: `UtilityPath`, `DownloadUrl`, `TargetFolder`.
+- `SetupTools`: This function checks if a utility exists at the specified path. If not, it attempts to set up the utility using the `DownloadTools` function. If the setup fails, it prompts the user to manually download and place the utility at the specified path. The function takes three parameters: `UtilityPath`, `DownloadUrl`, `TargetFolder`.
 
 - `CreateIntunePackage`: This function creates an Intune package using the Intune Windows App Utility. It takes several parameters including the source folder, setup file, output folder, and others.
 
@@ -42,9 +42,9 @@ Run the script in a PowerShell console. If any of the utilities are missing, the
 
 # User settable variables
 $Params = @{
-    'IntuneWinAppUtil' = "C:\Intune\IntuneWinAppUtil.exe"
-    'ConvertExe'       = "C:\Intune\Tools\ImageMagick\convert.exe"
-    'ExtractIcon'      = "C:\Intune\Tools\Extracticon\extracticon.exe"
+    'IntuneWinAppUtil' = "C:\Intune\testenv\IntuneWinAppUtil.exe"
+    'ConvertExe'       = "C:\Intune\testenv\Tools\ImageMagick\convert.exe"
+    'ExtractIcon'      = "C:\Intune\testenv\Tools\Extracticon\extracticon.exe"
     'TempMsiExtract'   = "C:\Temp\msi_extraction\"
     'OutputFolder'     = "C:\Intune\Output"
     'IconOutput'       = "C:\Intune\Logos"
@@ -58,34 +58,42 @@ $Params += @{
 }
 
 
-function SetupUtilities {
+function DownloadTools {
     param (
         [string]$utilityPath,
         [string]$downloadUrl,
         [string]$targetFolder
     )
 
-    # Check if the utility exists
-    if (-not (Test-Path $utilityPath)) {
-        # Create target folder if it does not exist
-        if (-not (Test-Path $targetFolder)) {
-            New-Item -Path $targetFolder -ItemType Directory | Out-Null
+    try {
+        # Check if the utility exists
+        if (-not (Test-Path $utilityPath)) {
+            # Create target folder if it does not exist
+            if (-not (Test-Path $targetFolder)) {
+                New-Item -Path $targetFolder -ItemType Directory | Out-Null
+            }
+            # Prompt user for download permission
+            $userConsent = Read-Host "The utility at '$utilityPath' is missing. Do you want to download it automatically and place it at $targetFolder ? (Y/N)"
+            if ($userConsent -eq 'Y') {
+                # Create target folder if it does not exist
+                if (-not (Test-Path $targetFolder)) {
+                    New-Item -Path $targetFolder -ItemType Directory | Out-Null
+                }
+                # Download the file
+                Write-Output "Downloading $utilityPath..."
+                $webClient = New-Object System.Net.WebClient
+                $webClient.DownloadFile($downloadUrl, $utilityPath)
+                Write-Output "Download completed and utility placed at: $utilityPath"
+            } else {
+                Write-Output "Setup aborted by the user."
+                return $false
+            }
         }
-
-        # Prompt user for download permission
-        $userConsent = Read-Host "The utility at '$utilityPath' is missing. Do you want to download and setup this utility? (Y/N)"
-        if ($userConsent -eq 'Y') {
-            # Download the file
-            Write-Output "Downloading $utilityPath..."
-            $webClient = New-Object System.Net.WebClient
-            $webClient.DownloadFile($downloadUrl, $utilityPath)
-            Write-Output "Download completed and utility placed at: $utilityPath"
-        } else {
-            Write-Output "Setup aborted by the user."
-            return $false
-        }
+        return $true
+    } catch {
+        Write-Output "An error occurred while setting up the utility: $_.Exception.Message"
+        return $false
     }
-    return $true
 }
 
 function SetupTools {
@@ -95,18 +103,26 @@ function SetupTools {
         [string]$TargetFolder
     )
 
-    if (-not (Test-Path $UtilityPath)) {
-        Write-Output "Error: Utility not found at: $UtilityPath"
-        $checkUtility = SetupUtilities -utilityPath $UtilityPath -downloadUrl $DownloadUrl -targetFolder $TargetFolder
-        if (-not $checkUtility) {
-            Write-Output "Setup of $UtilityPath is required for the script to continue, but the automatic setup has failed. Please download it manually and place it at the specified path."
-            Write-Output "You can download the file from: $DownloadUrl"
-            Read-Host "Press Enter to continue..."
-            while (-not (Test-Path $UtilityPath)) {
-                Write-Output "$UtilityPath not found at the specified path. Please download it manually and place it at the specified path."
-                Read-Host "Press Enter to continue..."
+    try {
+        if (-not (Test-Path $UtilityPath)) {
+            Write-Output "Error: Utility not found at: $UtilityPath"
+            $checkUtility = DownloadTools -utilityPath $UtilityPath -downloadUrl $DownloadUrl -targetFolder $TargetFolder
+            if ($checkUtility[1] -eq $false) {
+                Write-Output "Setup of $UtilityPath is required for the script to continue, but the automatic setup has failed. Please download it manually and place it at the specified path."
+                Write-Output "You can download the file from: $DownloadUrl"
+                while (-not (Test-Path $UtilityPath)) {
+                    $userResponse = Read-Host "Has the file been downloaded and placed the file at the location $UtilityPath, enter 'Y' to continue or 'N' to exit."
+                    if ($userResponse -eq 'Y') {
+                        break
+                    } elseif ($userResponse -eq 'N') {
+                        write-output "Cannot continue without this file. Exiting..."
+                        exit
+                    }
+                }
             }
         }
+    } catch {
+        Write-Output "An error occurred while setting up the utility: $_.Exception.Message"
     }
 }
 
