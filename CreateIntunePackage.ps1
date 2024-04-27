@@ -21,7 +21,7 @@ The script uses a hashtable `$Params` to store paths to various utilities and di
 .FUNCTIONS
 The script defines several functions:
 
-- `DownloadTools`: This function checks if a utility exists at the specified path. If not, it prompts the user to download and set up the utility. The function takes three parameters: `UtilityPath`, `downloadUrl`, `targetFolder`.
+- `DownloadTools`: Used to download the tools. The function takes three parameters: `UtilityPath`, `downloadUrl`, `targetFolder`.
 
 - `SetupTools`: This function checks if a utility exists at the specified path. If not, it attempts to set up the utility using the `DownloadTools` function. If the setup fails, it prompts the user to manually download and place the utility at the specified path. The function takes three parameters: `UtilityPath`, `DownloadUrl`, `TargetFolder`.
 
@@ -371,7 +371,7 @@ SetupTools -UtilityPath $Params.IntuneWinAppUtil -DownloadUrl "https://github.co
 SetupTools -UtilityPath $Params.ExtractIcon -DownloadUrl "https://github.com/Nakazen/CreateIntunePackage/raw/main/Tools/extracticon.exe" -TargetFolder (Split-Path $Params.ExtractIcon)
 
 # Icon extraction
-Write-Host "First time? Read the Synopsys and modify the Settable parameters section in the script."
+Write-Host "First time? Read the Synopsys and modify the Settable parameters section in the script." -ForegroundColor DarkGray
 write-host " "
 if ((Read-Host "Extract icon from executable or MSI? (Y/N)") -eq 'Y') {
     ExtractIconFromExecutableOrMSI
