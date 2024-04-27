@@ -18,7 +18,7 @@ The script uses a hashtable `$Params` to store paths to various utilities and di
 .FUNCTIONS
 The script defines several functions:
 
-- `DownloadTools`: This function checks if a utility exists at the specified path. If not, it prompts the user to download and set up the utility. The function takes three parameters: `utilityPath`, `downloadUrl`, `targetFolder`.
+- `DownloadTools`: This function checks if a utility exists at the specified path. If not, it prompts the user to download and set up the utility. The function takes three parameters: `UtilityPath`, `downloadUrl`, `targetFolder`.
 
 - `SetupTools`: This function checks if a utility exists at the specified path. If not, it attempts to set up the utility using the `DownloadTools` function. If the setup fails, it prompts the user to manually download and place the utility at the specified path. The function takes three parameters: `UtilityPath`, `DownloadUrl`, `TargetFolder`.
 
@@ -29,7 +29,8 @@ The script defines several functions:
 - `ConvertIconToPng`: This function converts an icon file to a PNG image using the ImageMagick convert utility. It takes two parameters: the path to the icon file and the output path for the PNG image.
 
 .USAGE
-Run the script in a PowerShell console. If any of the utilities are missing, the script will prompt you to download and set up the utilities. If the automatic setup fails, you will be prompted to manually download and place the utility at the specified path.
+Place and run the script in an Administrator PowerShell console from the folder you want to create the intune package from. If a PowerShell script is selected for packaging, the script will also create a text file with the install and uninstall commands (if an uninstall script is found that starts with ).
+If any of the utilities are missing, the script will prompt you to download and set up the utilities. If the automatic setup fails, you will be prompted to manually download and place the utility at the specified path.
 #>
 
 # ExtractIcon.exe:
@@ -60,40 +61,32 @@ $Params += @{
 
 function DownloadTools {
     param (
-        [string]$utilityPath,
+        [string]$UtilityPath,
         [string]$downloadUrl,
         [string]$targetFolder
     )
 
-    try {
-        # Check if the utility exists
-        if (-not (Test-Path $utilityPath)) {
-            # Create target folder if it does not exist
-            if (-not (Test-Path $targetFolder)) {
-                New-Item -Path $targetFolder -ItemType Directory | Out-Null
-            }
-            # Prompt user for download permission
-            $userConsent = Read-Host "The utility at '$utilityPath' is missing. Do you want to download it automatically and place it at $targetFolder ? (Y/N)"
-            if ($userConsent -eq 'Y') {
-                # Create target folder if it does not exist
-                if (-not (Test-Path $targetFolder)) {
-                    New-Item -Path $targetFolder -ItemType Directory | Out-Null
-                }
-                # Download the file
-                Write-Output "Downloading $utilityPath..."
+    if (-not (Test-Path $UtilityPath)) {
+        if (-not (Test-Path $targetFolder)) {
+            New-Item -Path $targetFolder -ItemType Directory | Out-Null
+        }
+        $userConsent = Read-Host "Utility missing at '$UtilityPath'. Download to '$targetFolder'? (Y/N)"
+        if ($userConsent -eq 'Y') {
+            try {
+                Write-Output "Downloading to $UtilityPath..."
                 $webClient = New-Object System.Net.WebClient
-                $webClient.DownloadFile($downloadUrl, $utilityPath)
-                Write-Output "Download completed and utility placed at: $utilityPath"
-            } else {
-                Write-Output "Setup aborted by the user."
+                $webClient.DownloadFile($downloadUrl, $UtilityPath)
+                Write-Output "Download completed."
+            } catch {
+                Write-Output "Download failed: $_.Exception.Message"
                 return $false
             }
+        } else {
+            Write-Output "Download canceled by user."
+            return $false
         }
-        return $true
-    } catch {
-        Write-Output "An error occurred while setting up the utility: $_.Exception.Message"
-        return $false
     }
+    return $true
 }
 
 function SetupTools {
@@ -144,6 +137,7 @@ function DisplayFilesAndPromptChoice($path, $extensions) {
         }
 
         $choice = Read-Host "Enter the number of the file"
+        Write-Host ""
         while ($choice -lt 1 -or $choice -gt $files.Count) {
             Write-Host "Invalid choice. Please choose a valid file number."
             $choice = Read-Host "Enter the number of the file"
@@ -280,9 +274,10 @@ function ExtractIconFromExecutableOrMSI {
         }
     
         # Inform the user
-        Write-Output "Icon extracted, renamed to $($Params.FolderName).png, and moved to $($Params.IconOutput)."
+        Write-Output "Icon extracted in PNG format, renamed to $($Params.FolderName).png, and moved to $($Params.IconOutput)."
         Write-Output "PNG file converted to ICO and saved as $($Params.FolderName).ico."
         Write-Output "Temporary files have been cleaned up."
+        Write-Output ""
     } catch {
         Write-Output "An error occurred while extracting the icon: $($_.Exception.Message)"
     }
@@ -316,7 +311,7 @@ function GenerateIntuneWinPackages {
         if ($selectedFile.Extension -eq ".ps1") {
             $baseName = [System.IO.Path]::GetFileNameWithoutExtension($selectedFile.Name)
             $logFileName = "$baseName.txt"
-            $installCommand = "Powershell.exe -NoProfile -ExecutionPolicy ByPass -Command ""& { md C:\IT\logs -ErrorAction SilentlyContinue; .\$($selectedFile.Name) -Verbose *> C:\IT\logs\$logFileName }"""
+            $installCommand = "Powershell.exe -NoProfile -ExecutionPolicy ByPass -Command ""& { md C:\IT\logs -ErrorAction SilentlyContinue; .\$($selectedFile.Name) -Verbose *> %programdata%\Microsoft\IntuneManagementExtension\Logs\$logFileName }"""
 
             # Search for uninstall scripts
             $uninstallScript = Get-ChildItem -Path $Params.ScriptDir -Filter "*.ps1" | Where-Object {
@@ -328,7 +323,7 @@ function GenerateIntuneWinPackages {
                 $uninstallCommand = $installCommand
             } else {
                 $uninstallLogFileName = "$($uninstallScript.BaseName).txt"
-                $uninstallCommand = "Powershell.exe -NoProfile -ExecutionPolicy ByPass -Command ""& { md C:\IT\logs -ErrorAction SilentlyContinue; .\$($uninstallScript.Name) -Verbose *> C:\IT\logs\$uninstallLogFileName }"""
+                $uninstallCommand = "Powershell.exe -NoProfile -ExecutionPolicy ByPass -Command ""& { md C:\IT\logs -ErrorAction SilentlyContinue; .\$($uninstallScript.Name) -Verbose *> %programdata%\Microsoft\IntuneManagementExtension\Logs\$uninstallLogFileName }"""
             }
 
             $commandText = 
@@ -344,6 +339,7 @@ $uninstallCommand
             $commandsFilePath = Join-Path $Params.ScriptDir "Install_Uninstall_Commands.txt"
             $commandText | Out-File $commandsFilePath -Force
             Write-Output "Commands file created at: $commandsFilePath"
+            write-output ""
         }
         # Cleanup temporary folder
         try {
@@ -357,6 +353,14 @@ $uninstallCommand
 }
 
 # Script logic
+Write-Host "_  _ ____ ___  ____ ____ _  _    _  _ ____ ____ ___  ___  _    ____ ____ ____ "
+write-host "|\/| |  | |  \ |___ |__/ |\ |    |\ | |___ |__/ |  \ |__] |    |__| |    |___ "
+write-host "|  | |__| |__/ |___ |  \ | \|    | \| |___ |  \ |__/ |    |___ |  | |___ |___ "                               
+Write-host " "
+Write-Host "_ _  _ ___ _  _ _  _ ____    ___  ____ ____ _  _ ____ ____ ____    ____ ____ _  _ ____ ____ ____ ___ ____ ____ "
+write-host "| |\ |  |  |  | |\ | |___    |__] |__| |    |_/  |__| | __ |___    | __ |___ |\ | |___ |__/ |__|  |  |  | |__/ "
+write-host "| | \|  |  |__| | \| |___    |    |  | |___ | \_ |  | |__] |___    |__] |___ | \| |___ |  \ |  |  |  |__| |  \ "                                 
+                                                                                                               
 # Check Utility Existence
 SetupTools -UtilityPath $Params.ConvertExe -DownloadUrl "https://github.com/Nakazen/CreateIntunePackage/raw/main/Tools/convert.exe" -TargetFolder (Split-Path $Params.ConvertExe)
 SetupTools -UtilityPath $Params.IntuneWinAppUtil -DownloadUrl "https://github.com/microsoft/Microsoft-Win32-Content-Prep-Tool/raw/v1.8.6/IntuneWinAppUtil.exe" -TargetFolder (Split-Path $Params.IntuneWinAppUtil)
@@ -368,6 +372,8 @@ if ((Read-Host "Extract icon from executable or MSI? (Y/N)") -eq 'Y') {
 }
 
 # Generate IntuneWin Packages
+Write-host ""
+Write-Host "Select the script or executable file to create an Intune package."
 GenerateIntuneWinPackages
 
 # Inform user
