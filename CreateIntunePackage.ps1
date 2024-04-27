@@ -1,5 +1,8 @@
 <#
 .SYNOPSIS
+
+Special thanks to 1do for sponsering this script!
+
 This PowerShell script is used to set up utilities and tools for creating Intune packages. It checks for the existence of certain utilities and downloads them if they are not found.
 
 .PARAMETER
@@ -352,14 +355,16 @@ $uninstallCommand
 }
 
 # Script logic
-Write-Host "_  _ ____ ___  ____ ____ _  _    _  _ ____ ____ ___  ___  _    ____ ____ ____ "
-write-host "|\/| |  | |  \ |___ |__/ |\ |    |\ | |___ |__/ |  \ |__] |    |__| |    |___ "
-write-host "|  | |__| |__/ |___ |  \ | \|    | \| |___ |  \ |__/ |    |___ |  | |___ |___ "                               
+Write-Host "_  _ ____ ___  ____ ____ _  _    _  _ ____ ____ ___  ___  _    ____ ____ ____ " -ForegroundColor Green
+write-host "|\/| |  | |  \ |___ |__/ |\ |    |\ | |___ |__/ |  \ |__] |    |__| |    |___ " -ForegroundColor Green
+write-host "|  | |__| |__/ |___ |  \ | \|    | \| |___ |  \ |__/ |    |___ |  | |___ |___ " -ForegroundColor Green
 Write-host " "
-Write-Host "_ _  _ ___ _  _ _  _ ____    ___  ____ ____ _  _ ____ ____ ____    ____ ____ _  _ ____ ____ ____ ___ ____ ____ "
-write-host "| |\ |  |  |  | |\ | |___    |__] |__| |    |_/  |__| | __ |___    | __ |___ |\ | |___ |__/ |__|  |  |  | |__/ "
-write-host "| | \|  |  |__| | \| |___    |    |  | |___ | \_ |  | |__] |___    |__] |___ | \| |___ |  \ |  |  |  |__| |  \ "                                 
-                                                                                                               
+Write-Host "_ _  _ ___ _  _ _  _ ____    ___  ____ ____ _  _ ____ ____ ____    ____ ____ _  _ ____ ____ ____ ___ ____ ____ " -ForegroundColor Green
+write-host "| |\ |  |  |  | |\ | |___    |__] |__| |    |_/  |__| | __ |___    | __ |___ |\ | |___ |__/ |__|  |  |  | |__/ " -ForegroundColor Green
+write-host "| | \|  |  |__| | \| |___    |    |  | |___ | \_ |  | |__] |___    |__] |___ | \| |___ |  \ |  |  |  |__| |  \ " -ForegroundColor Green
+Write-Host "Made by Boyd Heeres" -ForegroundColor Darkblue
+write-host " "
+
 # Check Utility Existence
 SetupTools -UtilityPath $Params.ConvertExe -DownloadUrl "https://github.com/Nakazen/CreateIntunePackage/raw/main/Tools/convert.exe" -TargetFolder (Split-Path $Params.ConvertExe)
 SetupTools -UtilityPath $Params.IntuneWinAppUtil -DownloadUrl "https://github.com/microsoft/Microsoft-Win32-Content-Prep-Tool/raw/v1.8.6/IntuneWinAppUtil.exe" -TargetFolder (Split-Path $Params.IntuneWinAppUtil)
@@ -367,6 +372,7 @@ SetupTools -UtilityPath $Params.ExtractIcon -DownloadUrl "https://github.com/Nak
 
 # Icon extraction
 Write-Host "First time? Read the Synopsys and modify the Settable parameters section in the script."
+write-host " "
 if ((Read-Host "Extract icon from executable or MSI? (Y/N)") -eq 'Y') {
     ExtractIconFromExecutableOrMSI
 }
