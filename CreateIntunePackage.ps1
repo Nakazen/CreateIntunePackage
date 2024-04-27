@@ -247,22 +247,36 @@ function ExtractIconFromExecutableOrMSI {
         }
     
     
-        # Remove the dedicated directory containing the .exe files
-        if ($processedMsi -and (Test-Path $exeFilesDirectory)) {
-            Remove-Item -Path $exeFilesDirectory -Recurse -Force
+        try {
+            # Remove the dedicated directory containing the .exe files
+            if ($processedMsi -and (Test-Path $exeFilesDirectory)) {
+                Remove-Item -Path $exeFilesDirectory -Recurse -Force
+            }
+        } catch {
+            Write-Host "An error occurred while removing the directory: $($_.Exception.Message)"
+            Write-Host "Please manually delete the directory: $exeFilesDirectory"
         }
     
         # Remove the temporary .png file
-        if (Test-Path $pngFilePath) {
+        try {
+            if (Test-Path $pngFilePath) {
             Remove-Item -Path $pngFilePath -Force
+            }
+        } catch {
+            Write-Host "An error occurred while removing the temporary .png file: $($_.Exception.Message)"
+            Write-Host "Please manually delete the file: $pngFilePath"
         }
-    
         # Clean up the temp MSI extraction directory
         $msiExtractionPath = $Params.TempMsiExtract
         if (Test-Path $msiExtractionPath) {
+            try {
             Write-Output "Cleaning up MSI extraction directory..."
             Remove-Item -Path $msiExtractionPath -Recurse -Force
             Write-Output "MSI extraction directory cleaned up."
+            } catch {
+            Write-Output "An error occurred while cleaning up the MSI extraction directory: $($_.Exception.Message)"
+            Write-Output "Please manually delete the directory: $msiExtractionPath"
+            }
         }
     
         # Inform the user
@@ -274,39 +288,50 @@ function ExtractIconFromExecutableOrMSI {
     }
 }
 function GenerateIntuneWinPackages {
-    $selectedFile = DisplayFilesAndPromptChoice $Params.ScriptDir ".(ps1|exe|bat|cmd|msi)$"
-    
-    $tempOutput = "$env:TEMP\IntuneOutput"
-    if (-not (Test-Path $tempOutput)) {
-        New-Item -Path $tempOutput -ItemType Directory -Force | Out-Null
-    }
-
-    & $Params.IntuneWinAppUtil -c "$($Params.ScriptDir)" -s "$($selectedFile.Name)" -o "$tempOutput"
-
-    # Rename and move the output file
-    $originalOutputFile = Get-ChildItem -Path $tempOutput -Filter *.intunewin
-    Rename-Item -Path $originalOutputFile.FullName -NewName "$($Params.FolderName).intunewin"
-    Move-Item -Path "$tempOutput\$($Params.FolderName).intunewin" -Destination "$($Params.OutputFolder)" -Force
-
-    if ($selectedFile.Extension -eq ".ps1") {
-        $baseName = [System.IO.Path]::GetFileNameWithoutExtension($selectedFile.Name)
-        $logFileName = "$baseName.txt"
-        $installCommand = "Powershell.exe -NoProfile -ExecutionPolicy ByPass -Command ""& { md C:\IT\logs -ErrorAction SilentlyContinue; .\$($selectedFile.Name) -Verbose *> C:\IT\logs\$logFileName }"""
-    
-        # Search for uninstall scripts
-        $uninstallScript = Get-ChildItem -Path $Params.ScriptDir -Filter "*.ps1" | Where-Object {
-            $_.Name -like "uninstall*" -or $_.Name -like "Undeploy*"
-        } | Select-Object -First 1
-    
-        if ($null -eq $uninstallScript) {
-            Write-Output "No specific uninstall script found, using install script for uninstall."
-            $uninstallCommand = $installCommand
-        } else {
-            $uninstallLogFileName = "$($uninstallScript.BaseName).txt"
-            $uninstallCommand = "Powershell.exe -NoProfile -ExecutionPolicy ByPass -Command ""& { md C:\IT\logs -ErrorAction SilentlyContinue; .\$($uninstallScript.Name) -Verbose *> C:\IT\logs\$uninstallLogFileName }"""
+    try {
+        $selectedFile = DisplayFilesAndPromptChoice $Params.ScriptDir ".(ps1|exe|bat|cmd|msi)$"
+        
+        $tempOutput = "$env:TEMP\IntuneOutput"
+        if (-not (Test-Path $tempOutput)) {
+            New-Item -Path $tempOutput -ItemType Directory -Force | Out-Null
         }
-    
-        $commandText = 
+
+        try {
+            & $Params.IntuneWinAppUtil -c "$($Params.ScriptDir)" -s "$($selectedFile.Name)" -o "$tempOutput"
+        } catch {
+            Write-Host "An error occurred while running IntuneWinAppUtil: $($_.Exception.Message)"
+            exit
+        }
+
+        # Rename and move the output file
+        try {
+            $originalOutputFile = Get-ChildItem -Path $tempOutput -Filter *.intunewin
+            Rename-Item -Path $originalOutputFile.FullName -NewName "$($Params.FolderName).intunewin"
+            Move-Item -Path "$tempOutput\$($Params.FolderName).intunewin" -Destination "$($Params.OutputFolder)" -Force
+        } catch {
+            Write-Host "An error occurred while renaming or moving the output file: $($_.Exception.Message)"
+            exit
+        }
+
+        if ($selectedFile.Extension -eq ".ps1") {
+            $baseName = [System.IO.Path]::GetFileNameWithoutExtension($selectedFile.Name)
+            $logFileName = "$baseName.txt"
+            $installCommand = "Powershell.exe -NoProfile -ExecutionPolicy ByPass -Command ""& { md C:\IT\logs -ErrorAction SilentlyContinue; .\$($selectedFile.Name) -Verbose *> C:\IT\logs\$logFileName }"""
+
+            # Search for uninstall scripts
+            $uninstallScript = Get-ChildItem -Path $Params.ScriptDir -Filter "*.ps1" | Where-Object {
+                $_.Name -like "uninstall*" -or $_.Name -like "Undeploy*"
+            } | Select-Object -First 1
+
+            if ($null -eq $uninstallScript) {
+                Write-Output "No specific uninstall script found, using install script for uninstall."
+                $uninstallCommand = $installCommand
+            } else {
+                $uninstallLogFileName = "$($uninstallScript.BaseName).txt"
+                $uninstallCommand = "Powershell.exe -NoProfile -ExecutionPolicy ByPass -Command ""& { md C:\IT\logs -ErrorAction SilentlyContinue; .\$($uninstallScript.Name) -Verbose *> C:\IT\logs\$uninstallLogFileName }"""
+            }
+
+            $commandText = 
 @"
 Install command:
 
@@ -316,12 +341,19 @@ Uninstall command:
 
 $uninstallCommand
 "@
-        $commandsFilePath = Join-Path $Params.ScriptDir "Install_Uninstall_Commands.txt"
-        $commandText | Out-File $commandsFilePath -Force
-        Write-Output "Commands file created at: $commandsFilePath"
+            $commandsFilePath = Join-Path $Params.ScriptDir "Install_Uninstall_Commands.txt"
+            $commandText | Out-File $commandsFilePath -Force
+            Write-Output "Commands file created at: $commandsFilePath"
+        }
+        # Cleanup temporary folder
+        try {
+            Remove-Item -Path $tempOutput -Recurse -Force
+        } catch {
+            Write-Host "An error occurred while cleaning up the temporary folder: $($_.Exception.Message)"
+        }
+    } catch {
+        Write-Output "An error occurred in the GenerateIntuneWinPackages function: $($_.Exception.Message)"
     }
-    # Cleanup temporary folder
-    Remove-Item -Path $tempOutput -Recurse -Force
 }
 
 # Script logic
