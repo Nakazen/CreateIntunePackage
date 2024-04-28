@@ -41,7 +41,8 @@ Place and run the script in an Administrator PowerShell console from the folder 
 If any of the utilities are missing, the script will prompt you to download and set up the utilities. If the automatic setup fails, you will be prompted to manually download and place the utility at the specified path.
 #>
 
-
+#TODO: Builtin Automatic detection script creation based on .ps1 file selected for the Intune Win32 package
+#TODO: Create FileManipulation Intune script for in a Win32 package and built
 
 # Settable parameters
 # User settable variables
