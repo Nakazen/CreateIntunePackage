@@ -124,7 +124,7 @@ function SetupTools {
 
 function DisplayFilesAndPromptChoice($path, $extensions) {
     try {
-        $files = Get-ChildItem -Path $path -File | Where-Object { $_.Extension -match $extensions }
+        $files = Get-ChildItem -Path $path -File | Where-Object { $_.Extension -match $extensions -and $_.Name -ne $Params.CurrentScriptName }
 
         # Check if files are found
         if (-not $files) {
@@ -201,6 +201,7 @@ function ExtractIconFromExecutableOrMSI {
                 Write-Host "An error occurred while starting Explorer: $($_.Exception.Message)"
                 exit
             }
+            write-host "Please select the .exe file you want the icon to be extracted from."
             $selectedFile = DisplayFilesAndPromptChoice $exeFilesDirectory ".exe$"
         }
         
@@ -279,13 +280,12 @@ function ExtractIconFromExecutableOrMSI {
         Write-Output "Icon extracted in PNG format, renamed to $($Params.FolderName).png, and moved to $($Params.IconOutput)."
         Write-Output "PNG file converted to ICO and saved as $($Params.FolderName).ico."
         Write-Output "Temporary files have been cleaned up."
-        Write-Output ""
     } catch {
         Write-Output "An error occurred while extracting the icon: $($_.Exception.Message)"
     }
 }
 function GenerateIntuneWinPackages {
-    try {
+        try {
         $selectedFile = DisplayFilesAndPromptChoice $Params.ScriptDir ".(ps1|exe|bat|cmd|msi)$"
         
         $tempOutput = "$env:TEMP\IntuneOutput"
