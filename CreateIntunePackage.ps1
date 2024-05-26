@@ -388,6 +388,8 @@ if ((Compare-Object -ReferenceObject `$actualValue -DifferenceObject `$expectedV
     Write-Host 'Step ${step}: Registry check failed for $($reg.Path)\$($reg.Name)'
     exit 1
 }
+
+
 "@
             } else {
                 $detectionScriptContent += @"
@@ -395,6 +397,8 @@ if (-not ((Get-ItemProperty -Path '$($reg.Path)' -Name '$($reg.Name)' -ErrorActi
     Write-Host 'Step ${step}: Registry check failed for $($reg.Path)\$($reg.Name)'
     exit 1
 }
+
+
 "@
             }
             $step++
@@ -409,6 +413,8 @@ if (-not (Test-Path -Path '$file')) {
     Write-Host 'Step ${step}: File check failed for $file'
     exit 1
 }
+
+
 "@
             $step++
         }
@@ -470,9 +476,6 @@ function GenerateIntuneWinPackages {
         Write-Output "An error occurred in the GenerateIntuneWinPackages function: $($_.Exception.Message)"
     }
 }
-
-
-
 
 
 # Script logic
