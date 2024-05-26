@@ -319,50 +319,113 @@ $uninstallCommand
     write-output ""
 }
 
-function GenerateIntuneDetectionScript($selectedFile){
-    $fileContent = Get-Content -Path $selectedFile.FullName
+function Parse-ScriptForChecks {
+    param (
+        [string]$ScriptPath
+    )
 
-    # Initialize arrays to store the actions
-    $registryActions = @()
-    $fileActions = @()
+    $scriptContent = Get-Content -Path $ScriptPath
+    $checkableValues = @{
+        RegistryKeys = @()
+        Files = @()
+    }
 
-    # Search for registry keys / file actions and accumulate results
-    foreach ($line in $fileContent) {
-        # Search for registry manipulation actions and accumulate results
-        if ($line -match "Set-ItemProperty|New-ItemProperty|Remove-ItemProperty|Remove-Item -Path") {
-            $registryActions += $line
+    foreach ($line in $scriptContent) {
+        if ($line -match "Set-ItemProperty\s+-Path\s+([^\s]+)\s+-Name\s+([^\s]+)\s+-Value\s+([^\s]+)") {
+            $registryPath = $matches[1].Trim('"')
+            $registryName = $matches[2].Trim('"')
+            $registryValue = $matches[3].Trim('"')
+            $checkableValues.RegistryKeys += @{Path=$registryPath; Name=$registryName; Value=$registryValue; PropertyType='String'}
         }
+        elseif ($line -match "New-ItemProperty\s+-Path\s+([^\s]+)\s+-Name\s+([^\s]+)\s+-Value\s+([^\s]+)\s+-PropertyType\s+([^\s]+)") {
+            $registryPath = $matches[1].Trim('"')
+            $registryName = $matches[2].Trim('"')
+            $registryValue = $matches[3].Trim('"')
+            $propertyType = $matches[4].Trim('"')
 
-        # Search for file manipulation actions and accumulate results
-        if ($line -match "Copy-Item|New-Item|Remove-Item|Rename-Item|Set-Content") {
-            $fileActions += $line
-            write-output $line
+            if ($propertyType -eq "Binary") {
+                $registryValue = $registryValue -replace '[^\d,]', ''
+                $registryValue = $registryValue.Split(',') | ForEach-Object { [byte]$_ }
+            }
+            
+            $checkableValues.RegistryKeys += @{Path=$registryPath; Name=$registryName; Value=$registryValue; PropertyType=$propertyType}
+        }
+        elseif ($line -match "New-Item\s+-ItemType\s+[^\s]+\s+-Path\s+`"([^`"]+)`"") {
+            $filePath = $matches[1].Trim('"')
+            $checkableValues.Files += $filePath
+        }
+    }
+    return $checkableValues
+}
+
+function GenerateIntuneDetectionScript {
+    param (
+        [string]$InputFile
+    )
+
+    # Use the updated Parse-ScriptForChecks function
+    $checkableValues = Parse-ScriptForChecks -ScriptPath $InputFile
+
+    $detectionScriptPath = Join-Path -Path $OutputPath -ChildPath "DetectionScript.ps1"
+
+    # Initialize the detection script content
+    $detectionScriptContent = @"
+# Detection script for Intune
+
+"@
+
+    $step = 1
+
+    # Append check for registry keys
+    if ($checkableValues.RegistryKeys) {
+        foreach ($reg in $checkableValues.RegistryKeys) {
+            if ($reg.PropertyType -eq "Binary") {
+                $binaryValue = [string]::Join(',', $reg.Value)
+                $detectionScriptContent += @"
+`$actualValue = (Get-ItemProperty -Path '$($reg.Path)' -Name '$($reg.Name)' -ErrorAction SilentlyContinue).$($reg.Name)
+`$expectedValue = [byte[]]@($binaryValue)
+if ((Compare-Object -ReferenceObject `$actualValue -DifferenceObject `$expectedValue -SyncWindow 0).Count -ne 0) {
+    Write-Host 'Step ${step}: Registry check failed for $($reg.Path)\$($reg.Name)'
+    exit 1
+}
+"@
+            } else {
+                $detectionScriptContent += @"
+if (-not ((Get-ItemProperty -Path '$($reg.Path)' -Name '$($reg.Name)' -ErrorAction SilentlyContinue).$($reg.Name) -eq '$($reg.Value)')) {
+    Write-Host 'Step ${step}: Registry check failed for $($reg.Path)\$($reg.Name)'
+    exit 1
+}
+"@
+            }
+            $step++
         }
     }
 
-    # #create detection script
-    # $registryPath = "HKLM:\SOFTWARE\MyApp"
-    # $valueName = "Version"
-    # $expectedValue = "1.0"
-    
-    # # Check if the registry path exists
-    # if (Test-Path $registryPath) {
-    #     # Get the actual value from the registry
-    #     $actualValue = (Get-ItemProperty -Path $registryPath).$valueName
-    
-    #     # Compare the actual value with the expected value
-    #     if ($actualValue -eq $expectedValue) {
-    #         Write-Host "Detection succeeded: The value is correct."
-    #         exit 0  # Success code for Intune
-    #     } else {
-    #         Write-Host "Detection failed: Value does not match."
-    #         exit 1  # Failure code
-    #     }
-    # } else {
-    #     Write-Host "Detection failed: Registry path does not exist."
-    #     exit 1  # Failure code
-    # }
+    # Append check for files
+    if ($checkableValues.Files) {
+        foreach ($file in $checkableValues.Files) {
+            $detectionScriptContent += @"
+if (-not (Test-Path -Path '$file')) {
+    Write-Host 'Step ${step}: File check failed for $file'
+    exit 1
+}
+"@
+            $step++
+        }
+    }
 
+    # Append the final exit code
+    $detectionScriptContent += @"
+Write-Host 'All checks passed!'
+exit 0
+"@
+
+    # Write the detection script content to the file
+    Set-Content -Path $detectionScriptPath -Value $detectionScriptContent -Force
+
+    # Output the path of the generated script
+    Write-Output "Detection script created at: $detectionScriptPath"
+    Write-Output ""
 }
 
 function GenerateIntuneWinPackages {
@@ -439,6 +502,3 @@ if ((Read-Host "Extract icon from executable or MSI? (Y/N)") -eq 'Y') {
 Write-host ""
 Write-Host "Select the script or executable file to create an Intune package."
 GenerateIntuneWinPackages
-
-# Inform user
-Read-Host "Press Enter to continue..."
